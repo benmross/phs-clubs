@@ -40,6 +40,7 @@ CATEGORY_ICONS = {
     "Honor Societies": '<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>',
     "Media & Leadership": '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',
     "Music & Performance": '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    "Sports & Education": '<circle cx="12" cy="12" r="10"/><path d="M4.93 4.93 19.07 19.07"/><path d="M14.83 14.83 19.07 4.93"/><path d="M9.17 9.17 4.93 19.07"/>',
     "Sports & Recreation": '<circle cx="12" cy="12" r="10"/><path d="M4.93 4.93 19.07 19.07"/><path d="M14.83 14.83 19.07 4.93"/><path d="M9.17 9.17 4.93 19.07"/>',
     "STEM & Education": '<path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>',
     "Technology & Engineering": '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/><line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="15" x2="22" y2="15"/><line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="15" x2="4" y2="15"/>',
@@ -269,6 +270,8 @@ SKIP_NAMES = {
     "CLUB NEEDS TO BE APPROVED",
 }
 CLASS_SPONSOR_RE = re.compile(r"^\s*(\d{4})\s*:\s*(.+?)\s*$")
+# Sheet bookkeeping marker: a lowercase "x" prepended to a club name
+NAME_MARKER_RE = re.compile(r"^x(?=[A-Z])")
 
 
 def parse_csv(text):
@@ -283,6 +286,14 @@ def parse_csv(text):
             break
     if header_idx is None:
         header_idx = 7  # fall back to known position in current sheet
+
+    # Newer sheets have a "Club Category" column inserted after the club name,
+    # shifting the remaining columns right by one.
+    header = rows[header_idx] if header_idx < len(rows) else []
+    has_category_col = (
+        len(header) > 2 and header[2].strip().lower() == "club category"
+    )
+    shift = 1 if has_category_col else 0
 
     clubs = []
     classes = []
@@ -302,14 +313,17 @@ def parse_csv(text):
         if name in SKIP_NAMES:
             continue
 
-        contact = row[2].strip() if len(row) > 2 else ""
-        email = row[3].strip() if len(row) > 3 else ""
-        sponsor = row[4].strip() if len(row) > 4 else ""
-        sponsor_email = row[5].strip() if len(row) > 5 else ""
-        description = row[6].strip() if len(row) > 6 else ""
-        meeting_time = row[7].strip() if len(row) > 7 else ""
-        location = row[8].strip() if len(row) > 8 else ""
-        additional = row[9].strip() if len(row) > 9 else ""
+        name = NAME_MARKER_RE.sub("", name)
+
+        category = row[2].strip() if has_category_col and len(row) > 2 else ""
+        contact = row[2 + shift].strip() if len(row) > 2 + shift else ""
+        email = row[3 + shift].strip() if len(row) > 3 + shift else ""
+        sponsor = row[4 + shift].strip() if len(row) > 4 + shift else ""
+        sponsor_email = row[5 + shift].strip() if len(row) > 5 + shift else ""
+        description = row[6 + shift].strip() if len(row) > 6 + shift else ""
+        meeting_time = row[7 + shift].strip() if len(row) > 7 + shift else ""
+        location = row[8 + shift].strip() if len(row) > 8 + shift else ""
+        additional = row[9 + shift].strip() if len(row) > 9 + shift else ""
 
         clubs.append(
             {
@@ -322,7 +336,7 @@ def parse_csv(text):
                 "meeting_time": meeting_time,
                 "location": location,
                 "additional": additional,
-                "category": categorize_club(name, description),
+                "category": category or categorize_club(name, description),
             }
         )
 
