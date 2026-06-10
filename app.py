@@ -19,7 +19,6 @@ SHEET_CSV_URL = (
     f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
     f"/export?format=csv&gid={SHEET_GID}"
 )
-BUNDLED_CSV = os.path.join(BASE_DIR, "PHS Clubs 2025-26 - 2024-25.csv")
 CACHE_CSV = os.path.join(BASE_DIR, "clubs_cache.csv")
 CACHE_TTL_SECONDS = int(os.environ.get("PHSCLUBS_CACHE_TTL", "600"))
 REFRESH_TOKEN = os.environ.get("PHSCLUBS_REFRESH_TOKEN", "")
@@ -368,8 +367,8 @@ def _load_csv_text():
     if os.path.exists(CACHE_CSV):
         with open(CACHE_CSV, encoding="utf-8") as f:
             return f.read(), "disk-cache"
-    with open(BUNDLED_CSV, encoding="utf-8") as f:
-        return f.read(), "bundled"
+    # No live fetch and no cache yet (fresh deploy, offline): render empty.
+    return "", "empty"
 
 
 _data_lock = threading.Lock()
