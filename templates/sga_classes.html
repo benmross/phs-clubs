@@ -370,6 +370,7 @@
         Class Officers &amp; Sponsors
       </div>
       <div class="panel-desc">Each grade level has a sponsor who supports class planning, fundraising, and events.</div>
+      {% if classes %}
       <div class="class-grid">
         {% for c in classes %}
         <div class="class-card">
@@ -378,6 +379,7 @@
         </div>
         {% endfor %}
       </div>
+      {% endif %}
       <p style="margin-top:14px;">
         <a class="panel-link" href="{{ classes_external_url }}" target="_blank" rel="noopener">
           Visit the Classes page

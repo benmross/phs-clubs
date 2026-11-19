@@ -273,33 +273,81 @@ CLASS_SPONSOR_RE = re.compile(r"^\s*(\d{4})\s*:\s*(.+?)\s*$")
 NAME_MARKER_RE = re.compile(r"^x(?=[A-Z])")
 
 
+def normalize_category(raw):
+    """Match a typed category to a known one, so "Health and Wellness" and
+    "health & wellness" both land in "Health & Wellness"."""
+    cleaned = re.sub(r"\s+", " ", raw.replace(" and ", " & ")).strip()
+    for known in CATEGORY_ICONS:
+        if cleaned.lower() == known.lower():
+            return known
+    return cleaned
+
+
+# Columns are found by header text, so inserting, removing or reordering
+# columns in the sheet does not shift data into the wrong fields. Each key
+# maps to the start of its header (lowercased); the number is its position
+# in the original sheet, used only if no header row can be found.
+COLUMN_HEADERS = {
+    "name": ("name of club", 1),
+    "category": ("club category", None),
+    "contact": ("student requesting", 2),
+    "email": ("student point of contact email", 3),
+    "sponsor": ("club sponsor's name", 4),
+    "sponsor_email": ("club sponsor's email", 5),
+    "description": ("purpose", 6),
+    "meeting_time": ("meeting day", 7),
+    "location": ("meeting location", 8),
+    "additional": ("additional information", 9),
+}
+EMAIL_RE = re.compile(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def column_positions(header):
+    normalized = [h.strip().lower() for h in header]
+    positions = {}
+    for key, (prefix, fallback) in COLUMN_HEADERS.items():
+        found = next(
+            (i for i, h in enumerate(normalized) if h.startswith(prefix)), None
+        )
+        positions[key] = found if found is not None else (
+            None if normalized else fallback
+        )
+    return positions
+
+
+def split_emails(text):
+    """Pull every address out of a cell like "a@x.org; b@y.com"."""
+    return EMAIL_RE.findall(text or "")
+
+
 def parse_csv(text):
     """Parse the PHS Clubs CSV text into (clubs, classes)."""
     rows = list(csv.reader(io.StringIO(text)))
 
-    # Find the header row (the one that starts with "Timestamp")
+    # The header row has "Timestamp" in column A and "Name of club" in B.
+    # Requiring both keeps a stray "Timestamp" typed elsewhere in column A
+    # from being taken as the header.
     header_idx = None
     for i, row in enumerate(rows[:20]):
-        if row and row[0].strip() == "Timestamp":
+        if (
+            len(row) > 1
+            and row[0].strip() == "Timestamp"
+            and row[1].strip().lower() == "name of club"
+        ):
             header_idx = i
             break
-    if header_idx is None:
-        header_idx = 7  # fall back to known position in current sheet
+    header = rows[header_idx] if header_idx is not None else []
+    cols = column_positions(header)
+    start = header_idx + 1 if header_idx is not None else 0
 
-    # Newer sheets have a "Club Category" column inserted after the club name,
-    # shifting the remaining columns right by one.
-    header = rows[header_idx] if header_idx < len(rows) else []
-    has_category_col = (
-        len(header) > 2 and header[2].strip().lower() == "club category"
-    )
-    shift = 1 if has_category_col else 0
+    def cell(row, key):
+        i = cols.get(key)
+        return row[i].strip() if i is not None and i < len(row) else ""
 
     clubs = []
     classes = []
-    for row in rows[header_idx + 1 :]:
-        if len(row) < 2:
-            continue
-        name = row[1].strip() if len(row) > 1 else ""
+    for row in rows[start:]:
+        name = cell(row, "name")
         if not name:
             continue
 
@@ -309,32 +357,28 @@ def parse_csv(text):
             classes.append({"year": f"Class of {m.group(1)}", "sponsor": m.group(2)})
             continue
 
-        if name in SKIP_NAMES:
+        if name in SKIP_NAMES or name.lower() == "name of club":
             continue
 
         name = NAME_MARKER_RE.sub("", name)
-
-        category = row[2].strip() if has_category_col and len(row) > 2 else ""
-        contact = row[2 + shift].strip() if len(row) > 2 + shift else ""
-        email = row[3 + shift].strip() if len(row) > 3 + shift else ""
-        sponsor = row[4 + shift].strip() if len(row) > 4 + shift else ""
-        sponsor_email = row[5 + shift].strip() if len(row) > 5 + shift else ""
-        description = row[6 + shift].strip() if len(row) > 6 + shift else ""
-        meeting_time = row[7 + shift].strip() if len(row) > 7 + shift else ""
-        location = row[8 + shift].strip() if len(row) > 8 + shift else ""
-        additional = row[9 + shift].strip() if len(row) > 9 + shift else ""
+        description = cell(row, "description")
+        category = normalize_category(cell(row, "category"))
+        email = cell(row, "email")
+        sponsor_email = cell(row, "sponsor_email")
 
         clubs.append(
             {
                 "name": name,
-                "contact": contact,
+                "contact": cell(row, "contact"),
                 "email": email,
-                "sponsor": sponsor,
+                "emails": split_emails(email),
+                "sponsor": cell(row, "sponsor"),
                 "sponsor_email": sponsor_email,
+                "sponsor_emails": split_emails(sponsor_email),
                 "description": description,
-                "meeting_time": meeting_time,
-                "location": location,
-                "additional": additional,
+                "meeting_time": cell(row, "meeting_time"),
+                "location": cell(row, "location"),
+                "additional": cell(row, "additional"),
                 "category": category or categorize_club(name, description),
             }
         )

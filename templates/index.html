@@ -641,13 +641,13 @@
               {% if club.email %}
               <div class="detail-row">
                 <span class="detail-label">Email</span>
-                <span class="detail-value"><a href="mailto:{{ club.email }}">{{ club.email }}</a></span>
+                <span class="detail-value">{% if club.emails %}{% for addr in club.emails %}<a href="mailto:{{ addr }}">{{ addr }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}{{ club.email }}{% endif %}</span>
               </div>
               {% endif %}
               {% if club.sponsor %}
               <div class="detail-row">
                 <span class="detail-label">Sponsor</span>
-                <span class="detail-value">{{ club.sponsor }}{% if club.sponsor_email and club.sponsor_email != "TBD" %} &mdash; <a href="mailto:{{ club.sponsor_email }}">{{ club.sponsor_email }}</a>{% endif %}</span>
+                <span class="detail-value">{{ club.sponsor }}{% for addr in club.sponsor_emails %}{{ ' — ' if loop.first else ', ' }}<a href="mailto:{{ addr }}">{{ addr }}</a>{% endfor %}</span>
               </div>
               {% endif %}
               {% if club.meeting_time %}
@@ -706,7 +706,7 @@
       } else if (scrollTarget) {
         scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {
-        const target = document.querySelector(`[data-category="${cat}"].category-section`);
+        const target = document.querySelector(`[data-category="${CSS.escape(cat)}"].category-section`);
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       closeMobile();
@@ -723,7 +723,7 @@
       tile.addEventListener('click', function (e) {
         e.preventDefault();
         const cat = this.dataset.category;
-        const target = document.querySelector(`[data-category="${cat}"].category-section`);
+        const target = document.querySelector(`[data-category="${CSS.escape(cat)}"].category-section`);
         activateCategory(cat, target);
       });
     });
@@ -800,10 +800,23 @@
       if (label && label.textContent.trim() === 'Links') {
         const val = row.querySelector('.detail-value');
         if (val) {
-          val.innerHTML = val.textContent.replace(
-            /(https?:\/\/[^\s,;]+)/g,
-            '<a href="$1" target="_blank" rel="noopener">$1</a>'
-          );
+          // Build the links as DOM nodes; the text comes from form answers,
+          // so it must never be parsed as HTML.
+          const text = val.textContent;
+          const parts = text.split(/(https?:\/\/[^\s,;]+)/g);
+          val.textContent = '';
+          parts.forEach((part, i) => {
+            if (i % 2 === 1) {
+              const a = document.createElement('a');
+              a.href = part;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              a.textContent = part;
+              val.appendChild(a);
+            } else if (part) {
+              val.appendChild(document.createTextNode(part));
+            }
+          });
         }
       }
     });
